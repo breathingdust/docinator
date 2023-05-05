@@ -1,10 +1,11 @@
-/*
-Copyright © 2023 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/dave/dst"
+	"github.com/dave/dst/decorator"
+	"github.com/dave/dst/dstutil"
 	"github.com/spf13/cobra"
 	"golang.org/x/exp/slices"
 	"log"
@@ -38,78 +39,72 @@ var pullCmd = &cobra.Command{
 
 		iterateThroughFiles(fmt.Sprintf("%s/internal/service/", providerPath), pull)
 
-		////file := "workspace.go"
-		//exDocFilePath := "../terraform-provider-aws/website/docs/r/prometheus_workspace.html.markdown"
-		//
-		//astutil.Apply(file, nil, func(c *astutil.Cursor) bool {
-		//	n := c.Node()
-		//	switch x := n.(type) {
-		//	case *ast.KeyValueExpr:
-		//		key, ok := x.Key.(*ast.BasicLit)
-		//		if ok {
-		//			attrName := key.Value
-		//			attrName = attrName[1 : len(attrName)-1]
-		//
-		//			fmt.Println(attrName)
-		//
-		//			doc, err := os.ReadFile(exDocFilePath)
-		//			if err != nil {
-		//				log.Fatal(err)
-		//			}
-		//			re := fmt.Sprintf("\\* `%v` - (.*)", attrName)
-		//			fmt.Println(re)
-		//			r, _ := regexp.Compile(re)
-		//
-		//			description := r.FindString(string(doc))
-		//
-		//			val, valOk := x.Value.(*ast.CompositeLit)
-		//			if valOk {
-		//				kve := ast.KeyValueExpr{}
-		//				kve.Key = &ast.Ident{Name: "Description"}
-		//				kve.Value = &ast.Ident{Name: fmt.Sprintf("\"%s\"", description)}
-		//				val.Elts = append([]ast.Expr{&kve}, val.Elts...)
-		//
-		//				val.Elts[0] = c.InsertBefore(kve, val.Elts[0])
-		//			}
-		//
-		//			fmt.Println(description)
-		//
-		//		}
-		//	}
-		//
-		//	// look for a basiclit where there is aprent kve
-		//
-		//	return true
-		//})
-		//var buf bytes.Buffer
-		//err = printer.Fprint(&buf, fset, file)
-		//if err != nil {
-		//	log.Fatal(err)
-		//}
-		//err = os.WriteFile("test.go", buf.Bytes(), 0644)
-		//if err != nil {
-		//	log.Fatal(err)
-		//}
 	},
 }
 
 type pullFile func(filename string, contents string, opts pullOptions)
 
 func pull(filename string, contents string, opts pullOptions) {
-	//fset := token.NewFileSet()
-	//file, err := parser.ParseFile(fset, filename, contents, parser.AllErrors)
-	//if err != nil {
-	//	log.Fatal(err)
-	//}
 
 	docFilePath := findDocumentationFile(contents, opts)
-	altFilePath := strings.Replace(docFilePath, "html.markdown", "markdown", -1)
 
-	if _, err := os.Stat(docFilePath); err != nil {
-		if _, err := os.Stat(altFilePath); err != nil {
-			fmt.Printf("%s does not exist\n", docFilePath)
-		}
+	file, err := decorator.Parse(contents)
+	if err != nil {
+		log.Fatalf(err.Error())
 	}
+
+	applyFunc := func(c *dstutil.Cursor) bool {
+		node := c.Node()
+		switch n := node.(type) {
+		case *dst.KeyValueExpr:
+			key, ok := n.Key.(*dst.BasicLit)
+			if ok {
+				attrName := key.Value
+				attrName = attrName[1 : len(attrName)-1]
+
+				fmt.Println(attrName)
+
+				doc, err := os.ReadFile(docFilePath)
+				if err != nil {
+					log.Fatal(err)
+				}
+				re := fmt.Sprintf("\\* `%v` - (.*)", attrName)
+				r, _ := regexp.Compile(re)
+
+				matches := r.FindAllStringSubmatch(string(doc), -1)
+
+				if len(matches) > 0 {
+					val, valOk := n.Value.(*dst.CompositeLit)
+					if valOk {
+						kve := dst.KeyValueExpr{}
+						kve.Key = &dst.Ident{Name: "Description"}
+						kve.Value = &dst.Ident{Name: fmt.Sprintf("\"%s\"", matches[0][1])}
+						kve.Decorations().Before = dst.NewLine
+						kve.Decorations().After = dst.NewLine
+						val.Elts = append([]dst.Expr{&kve}, val.Elts...)
+					}
+				}
+			}
+		}
+		return true
+	}
+	_ = dstutil.Apply(file, applyFunc, nil)
+	fmt.Println(FormatNode(*file))
+	panic("d")
+
+	//docFilePath := findDocumentationFile(contents, opts)
+	//altFilePath := strings.Replace(docFilePath, "html.markdown", "markdown", -1)
+	//
+	//if _, err := os.Stat(docFilePath); err != nil {
+	//	if _, err := os.Stat(altFilePath); err != nil {
+	//		fmt.Printf("%s does not exist\n", docFilePath)
+	//	}
+	//}
+}
+func FormatNode(file dst.File) string {
+	var buf bytes.Buffer
+	decorator.Fprint(&buf, &file)
+	return buf.String()
 }
 
 type pullOptions struct {
