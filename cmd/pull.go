@@ -23,22 +23,8 @@ var pullCmd = &cobra.Command{
 	Short: "Pulls description fields from markdown documentation into schema",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("pull called")
-
-		//dat, err := os.ReadFile("../terraform-provider-aws/internal/service/amp/workspace.go")
-		//fset := token.NewFileSet()
-		//file, err := parser.ParseFile(fset, "workspace.go", dat, parser.AllErrors)
-		//if err != nil {
-		//	log.Fatal(err)
-		//}
-		log.Println("loaded")
-
 		providerPath, _ = filepath.Abs(providerPath)
-
-		// Find and iterate through resource and datasource files
-
 		iterateThroughFiles(fmt.Sprintf("%s/internal/service/", providerPath), pull)
-
 	},
 }
 
@@ -100,8 +86,6 @@ func pull(path string, contents string, opts pullOptions) {
 
 	newContents := FormatNode(*file)
 
-	//fmt.Println(newContents)
-
 	distPath := strings.Replace(path, "terraform-provider-aws/internal", "terraform-provider-aws/dist/internal", -1)
 
 	err = os.MkdirAll(filepath.Dir(distPath), 0777)
@@ -118,17 +102,6 @@ func pull(path string, contents string, opts pullOptions) {
 		log.Printf(newContents)
 		log.Fatal(err)
 	}
-
-	//panic("")
-
-	//docFilePath := findDocumentationFile(contents, opts)
-	//altFilePath := strings.Replace(docFilePath, "html.markdown", "markdown", -1)
-	//
-	//if _, err := os.Stat(docFilePath); err != nil {
-	//	if _, err := os.Stat(altFilePath); err != nil {
-	//		fmt.Printf("%s does not exist\n", docFilePath)
-	//	}
-	//}
 }
 func FormatNode(file dst.File) string {
 	var buf bytes.Buffer
@@ -177,12 +150,6 @@ func iterateThroughFiles(path string, fn pullFile) {
 	}
 }
 
-/*func findPackageName(contents string) string {
-	r := regexp.MustCompile("package (\\w*)")
-	matches := r.FindAllStringSubmatch(contents, -1)
-	return matches[0][1]
-}*/
-
 func findDocumentationFile(contents string, opts pullOptions) string {
 	docTypePrefix := ""
 	var r *regexp.Regexp
@@ -226,15 +193,5 @@ func processExceptions(filename string) string {
 
 func init() {
 	rootCmd.AddCommand(pullCmd)
-
 	pullCmd.Flags().StringVarP(&providerPath, "provider-path", "p", "../terraform-provider-aws", "Path to AWS Provider")
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// pullCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// pullCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
