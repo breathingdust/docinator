@@ -42,11 +42,16 @@ var pullCmd = &cobra.Command{
 	},
 }
 
-type pullFile func(filename string, contents string, opts pullOptions)
+type pullFile func(path string, contents string, opts pullOptions)
 
-func pull(filename string, contents string, opts pullOptions) {
+func pull(path string, contents string, opts pullOptions) {
 
 	docFilePath := findDocumentationFile(contents, opts)
+
+	if _, err := os.Stat(docFilePath); err != nil {
+		log.Printf("No documentation file found for %s", docFilePath)
+		return
+	}
 
 	file, err := decorator.Parse(contents)
 	if err != nil {
@@ -62,14 +67,17 @@ func pull(filename string, contents string, opts pullOptions) {
 				attrName := key.Value
 				attrName = attrName[1 : len(attrName)-1]
 
-				fmt.Println(attrName)
-
 				doc, err := os.ReadFile(docFilePath)
 				if err != nil {
 					log.Fatal(err)
 				}
 				re := fmt.Sprintf("\\* `%v` - (.*)", attrName)
-				r, _ := regexp.Compile(re)
+				r, err := regexp.Compile(re)
+
+				if err != nil {
+					fmt.Printf("Failed to create regex for file %s and attribute: %s", path, attrName)
+					return false
+				}
 
 				matches := r.FindAllStringSubmatch(string(doc), -1)
 
@@ -89,8 +97,29 @@ func pull(filename string, contents string, opts pullOptions) {
 		return true
 	}
 	_ = dstutil.Apply(file, applyFunc, nil)
-	fmt.Println(FormatNode(*file))
-	panic("d")
+
+	newContents := FormatNode(*file)
+
+	//fmt.Println(newContents)
+
+	distPath := strings.Replace(path, "terraform-provider-aws/internal", "terraform-provider-aws/dist/internal", -1)
+
+	err = os.MkdirAll(filepath.Dir(distPath), 0777)
+	if err != nil {
+		return
+	}
+	f, err := os.Create(distPath)
+	defer f.Close()
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = f.WriteString(newContents)
+	if err != nil {
+		log.Printf(newContents)
+		log.Fatal(err)
+	}
+
+	//panic("")
 
 	//docFilePath := findDocumentationFile(contents, opts)
 	//altFilePath := strings.Replace(docFilePath, "html.markdown", "markdown", -1)
@@ -138,7 +167,7 @@ func iterateThroughFiles(path string, fn pullFile) {
 				fileTypeFound = false
 			}
 			if fileTypeFound {
-				fn(info.Name(), contents, opt)
+				fn(path, contents, opt)
 			}
 		}
 		return nil
